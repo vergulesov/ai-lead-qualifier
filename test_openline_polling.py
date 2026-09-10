@@ -38,8 +38,8 @@ def add_client_message_to_timeline(text: str) -> None:
 
 
 print(f"Слушаем Open Line сделки #{DEAL_ID}")
-print(f"ЧАТ: #{CHAT_ID}")
-print(f"ПРОВЕРКА каждые {INTERVAL} секунд.")
+print(f"Чат: #{CHAT_ID}")
+print(f"Проверка каждые {INTERVAL} секунд.")
 print()
 
 
@@ -66,7 +66,9 @@ while True:
                         print(f"Текст: {text}")
 
                         if newest.get("has_photo"):
-                            print("В сообщении также есть фотография.")
+                            print(
+                                "В сообщении также есть фотография."
+                            )
 
                         add_client_message_to_timeline(text)
 
@@ -128,9 +130,8 @@ while True:
                                 f"Входящий звонок — расшифровка:\n{transcript}"
                             )
 
-                    print(
-                        "Ждём обработку через Bitrix webhook..."
-                    )
+                    print("Ждём обработку через Bitrix webhook...")
+
                 else:
                     print(
                         f"Текущий последний ID: {newest['id']}"
