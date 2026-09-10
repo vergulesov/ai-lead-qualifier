@@ -29,8 +29,9 @@ class OpenLineClient:
             },
         )
 
-    def get_client_messages(self, deal_id):
-        chat_id = self.get_chat_id(deal_id)
+    def get_client_messages(self, deal_id, chat_id=None):
+        if chat_id is None:
+            chat_id = self.get_chat_id(deal_id)
 
         if chat_id is None:
             return []
