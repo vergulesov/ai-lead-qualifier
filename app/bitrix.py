@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -18,6 +19,41 @@ load_dotenv()
 
 class BitrixError(RuntimeError):
     pass
+
+
+def budget_to_opportunity(value: Any) -> int | None:
+    """Convert AI budget text to a provisional deal amount in RUB.
+
+    Rules:
+    - exact amount -> exact amount
+    - range -> midpoint
+    - 'до X' -> X
+    - empty/unparseable -> None
+    """
+    if value in (None, ""):
+        return None
+
+    text = str(value).lower().replace("\xa0", " ")
+    text = text.replace("₽", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+
+    multiplier = 1
+    if re.search(r"(?:млн|миллион)", text):
+        multiplier = 1_000_000
+    elif re.search(r"(?:тыс|тысяч)", text):
+        multiplier = 1_000
+
+    numbers = re.findall(r"\d+(?:[.,]\d+)?", text)
+    if not numbers:
+        return None
+
+    values = [float(number.replace(",", ".")) * multiplier for number in numbers]
+
+    # For a range use the midpoint of the first two values.
+    if len(values) >= 2 and re.search(r"[-–—]|до|от", text):
+        return int(round((values[0] + values[1]) / 2))
+
+    return int(round(values[0]))
 
 
 class BitrixClient:
@@ -116,41 +152,18 @@ class BitrixClient:
         """
 
         field_map = {
-            "object_type":
-                "UF_CRM_AI_OBJECT_TYPE",
-
-            "material":
-                "UF_CRM_AI_MATERIAL",
-
-            "condition":
-                "UF_CRM_AI_OBJECT_STATE",
-
-            "dimensions":
-                "UF_CRM_AI_AREA",
-
-            "location":
-                "UF_CRM_AI_GEO",
-
-            "project_available":
-                "UF_CRM_AI_PROJECT",
-
-            "photos_available":
-                "UF_CRM_AI_PHOTOS",
-
-            "desired_result":
-                "UF_CRM_AI_DESIRED_RESULT",
-
-            "additional_work":
-                "UF_CRM_AI_EXTRA_WORKS",
-
-            "start_timing":
-                "UF_CRM_AI_TIMING",
-
-            "budget":
-                "UF_CRM_AI_BUDGET",
-
-            "previous_experience":
-                "UF_CRM_AI_PREVIOUS_EXPERIENCE",
+            "object_type": "UF_CRM_AI_OBJECT_TYPE",
+            "material": "UF_CRM_AI_MATERIAL",
+            "condition": "UF_CRM_AI_OBJECT_STATE",
+            "dimensions": "UF_CRM_AI_AREA",
+            "location": "UF_CRM_AI_GEO",
+            "project_available": "UF_CRM_AI_PROJECT",
+            "photos_available": "UF_CRM_AI_PHOTOS",
+            "desired_result": "UF_CRM_AI_DESIRED_RESULT",
+            "additional_work": "UF_CRM_AI_EXTRA_WORKS",
+            "start_timing": "UF_CRM_AI_TIMING",
+            "budget": "UF_CRM_AI_BUDGET",
+            "previous_experience": "UF_CRM_AI_PREVIOUS_EXPERIENCE",
         }
 
         state = QualificationState()
@@ -190,8 +203,6 @@ class BitrixClient:
             ):
                 continue
 
-            # "Нет" в текстовых AI-полях означает,
-            # что значение ещё не определено.
             if (
                 field_name not in (
                     "project_available",
@@ -204,34 +215,6 @@ class BitrixClient:
             ):
                 continue
 
-            # Bitrix string-поля хранят boolean как текст.
-            if field_name in (
-                "project_available",
-                "photos_available",
-            ):
-                normalized = (
-                    str(value)
-                    .strip()
-                    .lower()
-                )
-
-                if normalized in (
-                    "да",
-                    "есть",
-                    "true",
-                    "1",
-                ):
-                    value = True
-
-                elif normalized in (
-                    "нет",
-                    "нету",
-                    "false",
-                    "0",
-                ):
-                    value = False
-
-            # Bitrix string-поля хранят boolean как текст.
             if field_name in (
                 "project_available",
                 "photos_available",
@@ -426,58 +409,23 @@ class BitrixClient:
     ) -> dict[str, Any]:
 
         field_map = {
-            "object_type":
-                "UF_CRM_AI_OBJECT_TYPE",
-
-            "material":
-                "UF_CRM_AI_MATERIAL",
-
-            "condition":
-                "UF_CRM_AI_OBJECT_STATE",
-
-            "dimensions":
-                "UF_CRM_AI_AREA",
-
-            "location":
-                "UF_CRM_AI_GEO",
-
-            "project_available":
-                "UF_CRM_AI_PROJECT",
-
-            "photos_available":
-                "UF_CRM_AI_PHOTOS",
-
-            "desired_result":
-                "UF_CRM_AI_DESIRED_RESULT",
-
-            "additional_work":
-                "UF_CRM_AI_EXTRA_WORKS",
-
-            "start_timing":
-                "UF_CRM_AI_TIMING",
-
-            "budget":
-                "UF_CRM_AI_BUDGET",
-
-            "previous_experience":
-                "UF_CRM_AI_PREVIOUS_EXPERIENCE",
-
-            "next_step":
-                "UF_CRM_1788381812",
+            "object_type": "UF_CRM_AI_OBJECT_TYPE",
+            "material": "UF_CRM_AI_MATERIAL",
+            "condition": "UF_CRM_AI_OBJECT_STATE",
+            "dimensions": "UF_CRM_AI_AREA",
+            "location": "UF_CRM_AI_GEO",
+            "project_available": "UF_CRM_AI_PROJECT",
+            "photos_available": "UF_CRM_AI_PHOTOS",
+            "desired_result": "UF_CRM_AI_DESIRED_RESULT",
+            "additional_work": "UF_CRM_AI_EXTRA_WORKS",
+            "start_timing": "UF_CRM_AI_TIMING",
+            "budget": "UF_CRM_AI_BUDGET",
+            "previous_experience": "UF_CRM_AI_PREVIOUS_EXPERIENCE",
+            "next_step": "UF_CRM_1788381812",
         }
 
         fields = {}
         updated = []
-
-        # -----------------------------------------------------
-        # AI fields
-        #
-        # Важно:
-        # result.fields содержит уже накопленное состояние,
-        # поэтому существующие AI-поля можно обновлять.
-        # Иначе Continuous Qualification не сможет
-        # дополнять или уточнять ранее полученные данные.
-        # -----------------------------------------------------
 
         for field_name, bitrix_field in field_map.items():
 
@@ -488,8 +436,6 @@ class BitrixClient:
             )
 
             if not qualification_field:
-                # Поле неизвестно — очищаем его в Bitrix,
-                # чтобы "Нет" не выглядело как установленное значение.
                 fields[bitrix_field] = ""
                 updated.append(
                     {
@@ -511,8 +457,6 @@ class BitrixClient:
                 )
                 continue
 
-            # Boolean переводим в понятный
-            # для текущего string-поля Bitrix формат.
             if isinstance(
                 value,
                 bool,
@@ -534,17 +478,9 @@ class BitrixClient:
                 }
             )
 
-        # -----------------------------------------------------
-        # NEXT STEP
-        # -----------------------------------------------------
-
         fields[
             "UF_CRM_1788381812"
         ] = result.next_step or ""
-
-        # -----------------------------------------------------
-        # SCORE
-        # -----------------------------------------------------
 
         fields[
             "UF_CRM_AI_SCORE"
@@ -552,26 +488,14 @@ class BitrixClient:
             result.score
         )
 
-        # -----------------------------------------------------
-        # QUALITY
-        # -----------------------------------------------------
-
         fields[
             "UF_CRM_AI_QUALITY"
         ] = result.quality
-
-        # -----------------------------------------------------
-        # SUMMARY
-        # -----------------------------------------------------
 
         if result.client_summary:
             fields[
                 "UF_CRM_AI_SUMMARY"
             ] = result.client_summary
-
-        # -----------------------------------------------------
-        # REPORT
-        # -----------------------------------------------------
 
         report = {
             "deal_id": str(
@@ -600,19 +524,37 @@ class BitrixClient:
             default=str,
         )
 
-        # -----------------------------------------------------
-        # UPDATED
-        # -----------------------------------------------------
-
         fields[
             "UF_CRM_AI_UPDATED"
         ] = datetime.now(
             timezone.utc
         ).isoformat()
 
-        # -----------------------------------------------------
-        # WRITE
-        # -----------------------------------------------------
+        # Заполняем стандартное "Сумма и валюта"
+        # только если менеджер ещё не указал сумму.
+        deal = self.get_deal(deal_id)
+        current_opportunity = deal.get("OPPORTUNITY")
+        try:
+            has_manager_amount = (
+                current_opportunity not in (None, "", 0, "0", "0.0")
+                and float(current_opportunity) != 0
+            )
+        except (TypeError, ValueError):
+            has_manager_amount = bool(current_opportunity)
+
+        if not has_manager_amount:
+            budget = None
+            budget_field = result.fields.get("budget")
+            if budget_field:
+                budget = budget_field.value
+
+            opportunity = budget_to_opportunity(budget)
+            if opportunity is not None:
+                fields["OPPORTUNITY"] = opportunity
+                print(
+                    f"[QUALIFIER] Сумма сделки из бюджета: {opportunity:,} ₽"
+                    .replace(",", " ")
+                )
 
         if fields:
 
