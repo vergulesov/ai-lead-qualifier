@@ -26,67 +26,83 @@ AI_FIELDS = [
     "UF_CRM_1788381812",  # AI Next Step
 ]
 
-
-CLIENT_COMMENT_PREFIXES = (
-    "Клиент:\n",
-    "Клиент:",
-    "Входящий звонок — расшифровка:",
-)
-
 CALL_SUBJECT = "Входящий звонок"
 CALL_DESCRIPTION = "Запись телефонного разговора с клиентом."
 
 
 def get_timeline_comments(bitrix):
-    result = bitrix.call(
-        "crm.timeline.comment.list",
-        {
-            "filter": {
-                "ENTITY_ID": DEAL_ID,
-                "ENTITY_TYPE": "deal",
+    """Get all Timeline comments for the demo deal, including pagination."""
+    comments = []
+    start = 0
+
+    while True:
+        result = bitrix.call(
+            "crm.timeline.comment.list",
+            {
+                "filter": {
+                    "ENTITY_ID": DEAL_ID,
+                    "ENTITY_TYPE": "deal",
+                },
+                "select": ["ID", "COMMENT", "CREATED"],
+                "order": {"ID": "ASC"},
+                "start": start,
             },
-            "select": ["ID", "COMMENT", "CREATED"],
-        },
-    )
-    return result or []
+        ) or []
+
+        comments.extend(result)
+
+        if len(result) < 50:
+            break
+
+        start += 50
+
+    return comments
 
 
 def get_activities(bitrix):
-    result = bitrix.call(
-        "crm.activity.list",
-        {
-            "filter": {
-                "OWNER_TYPE_ID": 2,
-                "OWNER_ID": DEAL_ID,
+    """Get all activities for the demo deal, including pagination."""
+    activities = []
+    start = 0
+
+    while True:
+        result = bitrix.call(
+            "crm.activity.list",
+            {
+                "filter": {
+                    "OWNER_TYPE_ID": 2,
+                    "OWNER_ID": DEAL_ID,
+                },
+                "select": ["ID", "SUBJECT", "DESCRIPTION"],
+                "start": start,
             },
-            "select": ["ID", "SUBJECT", "DESCRIPTION"],
-        },
-    )
-    return result or []
+        ) or []
 
+        activities.extend(result)
 
-def is_our_comment(comment):
-    text = (comment.get("COMMENT") or "").strip()
-    return text.startswith(CLIENT_COMMENT_PREFIXES)
+        if len(result) < 50:
+            break
 
+        start += 50
 
-def is_our_call(activity):
-    subject = (activity.get("SUBJECT") or "").strip()
-    description = (activity.get("DESCRIPTION") or "").strip()
-    return subject == CALL_SUBJECT or description == CALL_DESCRIPTION
+    return activities
 
 
 def delete_demo_comments(bitrix):
+    """Delete all Timeline comments from the dedicated demo deal.
+
+    Deal #10 is used exclusively for the portfolio recording, so its
+    Timeline comments are demo/test data and can be removed safely.
+    """
     comments = get_timeline_comments(bitrix)
     deleted = 0
 
     for comment in comments:
-        if not is_our_comment(comment):
-            continue
-
         comment_id = int(comment["ID"])
         text = (comment.get("COMMENT") or "").replace("\n", " ")
-        print(f"Удаляем тестовый Timeline-комментарий #{comment_id}: {text[:100]}")
+        print(
+            f"Удаляем Timeline-комментарий #{comment_id}: "
+            f"{text[:100]}"
+        )
 
         bitrix.call(
             "crm.timeline.comment.delete",
@@ -99,6 +115,12 @@ def delete_demo_comments(bitrix):
         deleted += 1
 
     return deleted
+
+
+def is_our_call(activity):
+    subject = (activity.get("SUBJECT") or "").strip()
+    description = (activity.get("DESCRIPTION") or "").strip()
+    return subject == CALL_SUBJECT or description == CALL_DESCRIPTION
 
 
 def delete_demo_calls(bitrix):
@@ -139,7 +161,7 @@ def main():
     print(f"Текущий этап: {deal.get('STAGE_ID')}")
     print()
 
-    print("1. Очищаем тестовые Timeline-комментарии...")
+    print("1. Очищаем Timeline-комментарии...")
     comments_deleted = delete_demo_comments(bitrix)
     print(f"   Удалено: {comments_deleted}")
     print()
