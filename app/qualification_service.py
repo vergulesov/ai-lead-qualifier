@@ -12,6 +12,7 @@ from .config import (
     PROFILES_DIR,
 )
 from .models import (
+    AIFieldSuggestion,
     Client,
     LeadInput,
     Message,
@@ -41,121 +42,47 @@ def process_deal(
     deal_id = str(deal_id)
 
     if client is None:
-        client = BitrixClient(
-            BITRIX_WEBHOOK_URL
-        )
+        client = BitrixClient(BITRIX_WEBHOOK_URL)
 
-    print(
-        f"[QUALIFIER] Получаем сделку #{deal_id}..."
-    )
-
-    deal = client.get_deal(
-        deal_id
-    )
-
-    print(
-        f"[QUALIFIER] Сделка: "
-        f"{deal.get('TITLE')}"
-    )
-
-    print(
-        f"[QUALIFIER] Стадия: "
-        f"{deal.get('STAGE_ID')}"
-    )
-
-    # =========================================================
-    # INPUT
-    # =========================================================
+    print(f"[QUALIFIER] Получаем сделку #{deal_id}...")
+    deal = client.get_deal(deal_id)
+    print(f"[QUALIFIER] Сделка: {deal.get('TITLE')}")
+    print(f"[QUALIFIER] Стадия: {deal.get('STAGE_ID')}")
 
     if input_text is not None:
-
         text = input_text.strip()
-
-        print(
-            "[QUALIFIER] Источник: Open Line"
-        )
-
-        print(
-            f"[QUALIFIER] Новое сообщение: "
-            f"{text}"
-        )
+        print("[QUALIFIER] Источник: Open Line")
+        print(f"[QUALIFIER] Новое сообщение: {text}")
 
         if not text:
-            print(
-                "[QUALIFIER] Пустое сообщение."
-            )
-
-            return {
-                "status": "skipped",
-                "reason": "empty_input",
-                "deal_id": deal_id,
-            }
+            print("[QUALIFIER] Пустое сообщение.")
+            return {"status": "skipped", "reason": "empty_input", "deal_id": deal_id}
 
         message_source = "bitrix_openline"
         message_id = f"openline-{deal_id}"
 
     else:
-
-        # =====================================================
-        # TIMELINE
-        # =====================================================
-
-        comments = client.get_timeline_comments(
-            deal_id
-        )
-
-        print(
-            f"[QUALIFIER] Timeline comments: "
-            f"{len(comments)}"
-        )
-
+        comments = client.get_timeline_comments(deal_id)
+        print(f"[QUALIFIER] Timeline comments: {len(comments)}")
         text_parts = []
-
         for comment in comments:
-
-            comment_text = comment.get(
-                "COMMENT"
-            )
-
+            comment_text = comment.get("COMMENT")
             if comment_text:
-                text_parts.append(
-                    comment_text
-                )
+                text_parts.append(comment_text)
 
-        text = "\n\n".join(
-            text_parts
-        ).strip()
-
+        text = "\n\n".join(text_parts).strip()
         if not text:
-            print(
-                "[QUALIFIER] Нет текста для анализа."
-            )
-
-            return {
-                "status": "skipped",
-                "reason": "no_timeline_text",
-                "deal_id": deal_id,
-            }
+            print("[QUALIFIER] Нет текста для анализа.")
+            return {"status": "skipped", "reason": "no_timeline_text", "deal_id": deal_id}
 
         message_source = "bitrix_timeline"
         message_id = f"timeline-{deal_id}"
 
-    # =========================================================
-    # BUILD LEAD
-    # =========================================================
-
-    client_data = Client(
-        name=deal.get(
-            "TITLE"
-        )
-    )
+    client_data = Client(name=deal.get("TITLE"))
 
     message = Message(
         id=message_id,
-        timestamp=(
-            deal.get("DATE_MODIFY")
-            or deal.get("DATE_CREATE")
-        ),
+        timestamp=deal.get("DATE_MODIFY") or deal.get("DATE_CREATE"),
         role="client" if input_text is not None else "unknown",
         text=text,
         source=message_source,
@@ -163,36 +90,17 @@ def process_deal(
 
     lead = LeadInput(
         deal_id=deal_id,
-        title=deal.get(
-            "TITLE"
-        ),
-        stage=deal.get(
-            "STAGE_ID"
-        ),
+        title=deal.get("TITLE"),
+        stage=deal.get("STAGE_ID"),
         client=client_data,
         crm_fields=deal,
-        messages=[
-            message
-        ],
+        messages=[message],
         calls=[],
     )
 
-    # =========================================================
-    # PROFILE
-    # =========================================================
+    profile = load_profile(PROFILES_DIR, "best_paints")
 
-    profile = load_profile(
-        PROFILES_DIR,
-        "best_paints",
-    )
-
-    # =========================================================
-    # AI
-    # =========================================================
-
-    print(
-        "[QUALIFIER] Запускаем AI-анализ..."
-    )
+    print("[QUALIFIER] Запускаем AI-анализ...")
 
     analyzer = GigaChatAnalyzer(
         credentials=GIGACHAT_CREDENTIALS,
@@ -205,66 +113,49 @@ def process_deal(
     )
 
     try:
-
-        analysis = analyzer.analyze(
-            lead,
-            profile,
-        )
-
+        analysis = analyzer.analyze(lead, profile)
     except AnalyzerError:
-
-        print(
-            "[QUALIFIER] AI-анализ завершился ошибкой."
-        )
-
+        print("[QUALIFIER] AI-анализ завершился ошибкой.")
         raise
 
     # =========================================================
     # DETERMINISTIC ATTACHMENT FACTS
     # =========================================================
 
-    # AI может ошибочно интерпретировать фразу вроде
-    # "Фото сейчас скину" как уже полученную фотографию.
-    # Фактическое наличие вложения известно Open Line,
-    # поэтому при наличии этого сигнала он имеет приоритет.
+    # Для фотографии источник истины — вложение Open Line,
+    # а не текст клиента.
+    #
+    # True: фотография реально приложена.
+    # False: в текущем сообщении фотографии нет.
+    # False здесь НЕ записывается в накопленное состояние:
+    # это только защита от ложного вывода AI.
     if has_photo is not None:
-        photo_field = analysis.fields.get(
-            "photos_available"
-        )
+        photo_field = analysis.fields.get("photos_available")
 
-        if photo_field is not None:
-            photo_field.value = has_photo
+        if photo_field is None:
+            photo_field = AIFieldSuggestion()
+            analysis.fields["photos_available"] = photo_field
+
+        if has_photo:
+            photo_field.value = True
             photo_field.confidence = 1.0
-            photo_field.evidence = (
-                ["Фактическое вложение изображения в Open Line."]
-                if has_photo
-                else []
-            )
+            photo_field.evidence = [
+                "Фактическое вложение изображения в Open Line."
+            ]
         else:
-            from .models import AIFieldSuggestion
-
-            analysis.fields["photos_available"] = AIFieldSuggestion(
-                value=has_photo,
-                confidence=1.0,
-                evidence=(
-                    ["Фактическое вложение изображения в Open Line."]
-                    if has_photo
-                    else []
-                ),
-            )
+            # Важно: null позволяет merge_ai_analysis сохранить
+            # ранее подтверждённое значение, но не позволяет AI
+            # установить true по фразе "Фото сейчас скину".
+            photo_field.value = None
+            photo_field.confidence = 0.0
+            photo_field.evidence = []
 
         print(
             f"[QUALIFIER] Фото по факту вложения Open Line: "
             f"{'Да' if has_photo else 'Нет'}"
         )
 
-    # =========================================================
-    # QUALIFICATION PIPELINE
-    # =========================================================
-
-    state = client.get_qualification_state(
-        deal
-    )
+    state = client.get_qualification_state(deal)
 
     result = build_result(
         lead,
@@ -279,24 +170,14 @@ def process_deal(
         f"Quality={result.quality}, "
         f"Intent={result.intent}"
     )
-
-    print(
-        "[QUALIFIER] "
-        f"Next Step={result.next_step}"
-    )
-
-    # =========================================================
-    # BITRIX WRITE
-    # =========================================================
+    print(f"[QUALIFIER] Next Step={result.next_step}")
 
     write_result = client.write_qualification_result(
         deal_id=deal_id,
         result=result,
     )
 
-    print(
-        "[QUALIFIER] Результат записан в Bitrix24."
-    )
+    print("[QUALIFIER] Результат записан в Bitrix24.")
 
     return {
         "status": "processed",
