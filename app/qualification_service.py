@@ -24,6 +24,7 @@ def process_deal(
     deal_id: str | int,
     client: BitrixClient | None = None,
     input_text: str | None = None,
+    has_photo: bool | None = None,
 ) -> dict:
     """
     Полный цикл квалификации сделки.
@@ -32,10 +33,9 @@ def process_deal(
     - из Timeline webhook;
     - из Open Line polling.
 
-    Если input_text передан, он используется как
-    новое входящее сообщение клиента.
-    Если input_text не передан — используется
-    текст из Timeline comments.
+    has_photo — детерминированный факт наличия фотографии
+    во входящем сообщении Open Line. Если значение известно,
+    оно имеет приоритет над интерпретацией текста AI.
     """
 
     deal_id = str(deal_id)
@@ -92,7 +92,6 @@ def process_deal(
             }
 
         message_source = "bitrix_openline"
-
         message_id = f"openline-{deal_id}"
 
     else:
@@ -139,7 +138,6 @@ def process_deal(
             }
 
         message_source = "bitrix_timeline"
-
         message_id = f"timeline-{deal_id}"
 
     # =========================================================
@@ -222,11 +220,48 @@ def process_deal(
         raise
 
     # =========================================================
+    # DETERMINISTIC ATTACHMENT FACTS
+    # =========================================================
+
+    # AI может ошибочно интерпретировать фразу вроде
+    # "Фото сейчас скину" как уже полученную фотографию.
+    # Фактическое наличие вложения известно Open Line,
+    # поэтому при наличии этого сигнала он имеет приоритет.
+    if has_photo is not None:
+        photo_field = analysis.fields.get(
+            "photos_available"
+        )
+
+        if photo_field is not None:
+            photo_field.value = has_photo
+            photo_field.confidence = 1.0
+            photo_field.evidence = (
+                ["Фактическое вложение изображения в Open Line."]
+                if has_photo
+                else []
+            )
+        else:
+            from .models import AIFieldSuggestion
+
+            analysis.fields["photos_available"] = AIFieldSuggestion(
+                value=has_photo,
+                confidence=1.0,
+                evidence=(
+                    ["Фактическое вложение изображения в Open Line."]
+                    if has_photo
+                    else []
+                ),
+            )
+
+        print(
+            f"[QUALIFIER] Фото по факту вложения Open Line: "
+            f"{'Да' if has_photo else 'Нет'}"
+        )
+
+    # =========================================================
     # QUALIFICATION PIPELINE
     # =========================================================
 
-    # Восстанавливаем накопленное состояние сделки
-    # из AI-полей Bitrix24.
     state = client.get_qualification_state(
         deal
     )
