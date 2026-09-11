@@ -9,6 +9,7 @@ from .config import PROFILES_DIR
 from .profile import list_profiles, load_profile, ProfileError
 from .qualification_service import process_deal
 from .bitrix import BitrixClient
+from .openline import OpenLineClient
 
 
 app = FastAPI(
@@ -291,11 +292,51 @@ def _extract_comment_id(
 
 
 # =========================================================
+# OPEN LINE ATTACHMENT FACTS
+# =========================================================
+
+
+def _get_latest_openline_photo_fact(
+    deal_id: str,
+) -> bool | None:
+    """
+    Получает фактическое наличие фотографии из Open Line.
+
+    Это намеренно не извлекается из текста: фраза
+    "Фото сейчас скину" не является фактом получения фото.
+    "Да" выставляется только если последнее сообщение
+    клиента действительно содержит image-вложение.
+    "Нет" возвращается только для явного отсутствия фото
+    в сообщении, когда это сообщение является источником
+    текущего события.
+    """
+
+    try:
+        client = BitrixClient()
+        openline = OpenLineClient(client)
+        messages = openline.get_client_messages(deal_id)
+
+        if not messages:
+            return None
+
+        newest = messages[-1]
+        return bool(newest.get("has_photo"))
+
+    except Exception as exc:
+        print(
+            "[ACTIVITY WEBHOOK] Не удалось получить "
+            f"факт вложения фото из Open Line: {exc}"
+        )
+        return None
+
+
+# =========================================================
 # DEAL PROCESSING
 # =========================================================
 
 async def _process_deal_background(
     deal_id: str,
+    has_photo: bool | None = None,
 ) -> None:
 
     try:
@@ -305,6 +346,9 @@ async def _process_deal_background(
         await asyncio.to_thread(
             process_deal,
             deal_id,
+            None,
+            None,
+            has_photo,
         )
 
     except Exception as exc:
@@ -368,19 +412,6 @@ async def bitrix_webhook(
             "reason": "deal_id_not_found",
         }
 
-    # Защита от цикла:
-    #
-    # Bitrix event
-    #     ↓
-    # process_deal
-    #     ↓
-    # crm.deal.update
-    #     ↓
-    # Bitrix event
-    #
-    # Второй event той же сделки
-    # не запускает второй AI-анализ.
-
     if not _try_lock_deal(
         deal_id
     ):
@@ -440,10 +471,6 @@ async def bitrix_activity_webhook(
         )
     )
 
-    # -----------------------------------------------------
-    # Нас интересуют только новые комментарии Timeline
-    # -----------------------------------------------------
-
     event = payload.get(
         "event"
     )
@@ -483,10 +510,6 @@ async def bitrix_activity_webhook(
         f"Получен комментарий #{comment_id}"
     )
 
-    # -----------------------------------------------------
-    # Получаем полный комментарий через Bitrix REST
-    # -----------------------------------------------------
-
     try:
 
         client = BitrixClient()
@@ -513,13 +536,7 @@ async def bitrix_activity_webhook(
             )
         )
 
-        # crm.timeline.comment.get возвращает данные
-        # комментария непосредственно в response.
         result = response
-
-        # -------------------------------------------------
-        # Проверяем ответ Bitrix
-        # -------------------------------------------------
 
         if not isinstance(
             result,
@@ -584,10 +601,6 @@ async def bitrix_activity_webhook(
             "-" * 60
         )
 
-        # -------------------------------------------------
-        # Комментарий должен относиться к сделке
-        # -------------------------------------------------
-
         if entity_type != "deal":
 
             print(
@@ -620,10 +633,6 @@ async def bitrix_activity_webhook(
             entity_id
         )
 
-        # -------------------------------------------------
-        # Защита от параллельной обработки
-        # -------------------------------------------------
-
         if not _try_lock_deal(
             deal_id
         ):
@@ -641,21 +650,32 @@ async def bitrix_activity_webhook(
             }
 
         # -------------------------------------------------
-        # Запускаем существующий квалификатор
-        #
-        # Важно:
-        # здесь мы НЕ передаём AI текст комментария.
-        #
-        # process_deal() сам получает актуальное состояние
-        # сделки и Timeline через Bitrix REST.
-        #
-        # Поэтому квалификатор видит не только последний
-        # комментарий, а накопленную историю сделки.
+        # Источник истины для фотографии — Open Line.
         # -------------------------------------------------
+        # Текст "Фото сейчас скину" не даёт права
+        # выставить photos_available=true.
+        # true появляется только при реальном image-вложении.
+        has_photo = await asyncio.to_thread(
+            _get_latest_openline_photo_fact,
+            deal_id,
+        )
+
+        print(
+            "[ACTIVITY WEBHOOK] "
+            "Факт фотографии из Open Line: "
+            + (
+                "Да"
+                if has_photo is True
+                else "Нет"
+                if has_photo is False
+                else "не определён"
+            )
+        )
 
         asyncio.create_task(
             _process_deal_background(
-                deal_id
+                deal_id,
+                has_photo=has_photo,
             )
         )
 
