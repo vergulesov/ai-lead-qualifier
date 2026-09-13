@@ -20,7 +20,7 @@ AI-движок для автоматической квалификации л�
 
 16-страничный визуальный разбор проекта: проблема, концепция, Continuous Qualification, scoring, бизнес-логика, интеграция с Bitrix24 и результат для менеджера.
 
-**[Открыть PDF на Яндекс Диске](https://disk.yandex.ru/i/z_-K6rmNPzoQJg)**
+**[Открыть PDF на Яндекс Диске](https://disk.yandex.ru/i/3TSkEH02PulyWg)**
 
 PDF также находится в репозитории: `docs/AI_Lead_Qualifier_Case.pdf`.
 
