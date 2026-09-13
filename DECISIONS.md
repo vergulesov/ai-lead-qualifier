@@ -4,7 +4,7 @@
 - One CRM: Bitrix24.
 - LLM provider: GigaChat.
 - Speech-to-text provider: Yandex SpeechKit.
-- One main niche profile: Best Paints.
+- One main niche profile: wooden house painting.
 - Score is deterministic.
 - AI may suggest a change to manager-owned fields but cannot overwrite them.
 - Short/noise messages are ignored before LLM.
