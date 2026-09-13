@@ -39,7 +39,7 @@ def run():
         print("PRE-CHECK: ничего содержательного для анализа.")
         return
 
-    profile = load_profile(PROFILES_DIR, "best_paints")
+    profile = load_profile(PROFILES_DIR, "wooden_house")
 
     analyzer = GigaChatAnalyzer(
         credentials=GIGACHAT_CREDENTIALS,
