@@ -1,0 +1,162 @@
+{
+  "name": "wooden_house",
+  "version": "1.0",
+  "description": "Квалификация лидов для покраски деревянных домов.",
+
+  "fields": {
+    "object_type": {
+      "description": "Что именно нужно покрасить/обработать"
+    },
+    "material": {
+      "description": "Материал дома: клееный брус, оцилиндрованное бревно, каркас и т.д."
+    },
+    "condition": {
+      "description": "Новый дом, ранее окрашен, плохое состояние и т.д."
+    },
+    "dimensions": {
+      "description": "Размеры дома или известная площадь"
+    },
+    "location": {
+      "description": "Где находится объект"
+    },
+    "project_available": {
+      "description": "Есть ли проект дома"
+    },
+    "photos_available": {
+      "description": "Есть ли фотографии объекта"
+    },
+    "desired_result": {
+      "description": "Какой результат клиент хочет получить"
+    },
+    "additional_work": {
+      "description": "Наличники, доборы, свесы и другие дополнительные работы"
+    },
+    "start_timing": {
+      "description": "Когда клиент хочет начать работы"
+    },
+    "budget": {
+      "description": "Бюджет или ориентир по стоимости"
+    },
+    "previous_experience": {
+      "description": "Предыдущий опыт работы с подрядчиками"
+    }
+  },
+
+  "required_fields": [
+    "object_type",
+    "material",
+    "location"
+  ],
+
+  "score_rules": [
+    {
+      "id": "object",
+      "points": 10,
+      "condition": {
+        "field": "object_type",
+        "operator": "exists"
+      }
+    },
+    {
+      "id": "material",
+      "points": 10,
+      "condition": {
+        "field": "material",
+        "operator": "exists"
+      }
+    },
+    {
+      "id": "location",
+      "points": 5,
+      "condition": {
+        "field": "location",
+        "operator": "exists"
+      }
+    },
+    {
+      "id": "dimensions",
+      "points": 10,
+      "condition": {
+        "field": "dimensions",
+        "operator": "exists"
+      }
+    },
+    {
+      "id": "condition",
+      "points": 10,
+      "condition": {
+        "field": "condition",
+        "operator": "exists"
+      }
+    },
+    {
+      "id": "project",
+      "points": 5,
+      "condition": {
+        "field": "project_available",
+        "operator": "equals",
+        "value": true
+      }
+    },
+    {
+      "id": "photos",
+      "points": 5,
+      "condition": {
+        "field": "photos_available",
+        "operator": "equals",
+        "value": true
+      }
+    },
+    {
+      "id": "result",
+      "points": 10,
+      "condition": {
+        "field": "desired_result",
+        "operator": "exists"
+      }
+    },
+    {
+      "id": "timing",
+      "points": 15,
+      "condition": {
+        "field": "start_timing",
+        "operator": "exists"
+      }
+    },
+    {
+      "id": "budget",
+      "points": 15,
+      "condition": {
+        "field": "budget",
+        "operator": "exists"
+      }
+    },
+    {
+      "id": "experience",
+      "points": 5,
+      "condition": {
+        "field": "previous_experience",
+        "operator": "exists"
+      }
+    }
+  ],
+
+  "intent_bonus": {
+    "BUYING_SOON": 10,
+    "HIGH_INTENT_LATER": 5,
+    "UNCERTAIN": 0,
+    "LOW_INTENT": 0
+  },
+
+  "object_priority_bonus": {
+    "HIGH": 10,
+    "NORMAL": 0,
+    "LOW": 0
+  },
+
+  "quality": {
+    "high": 70,
+    "medium": 40,
+    "low": 0
+  }
+}
